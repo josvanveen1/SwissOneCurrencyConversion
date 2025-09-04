@@ -41,11 +41,3 @@ def extract_historical_prices():
                         row = dict(zip(headers, cells))
                         historical_data.append(row)
     return historical_data
-
-
-historical_prices = extract_historical_prices()
-
-# Output the data
-print("\nHistorical Price Data:")
-for row in historical_prices:
-    print(row)
