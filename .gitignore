@@ -1,2 +1,4 @@
 src/.env
 venv/
+src/__pycache__
+.DS_Store
