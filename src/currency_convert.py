@@ -1,12 +1,15 @@
 import json
 import requests
+import os
+from dotenv import load_dotenv
 
 def get_conversion_rate():
     """
     Fetches the live conversion rate from EUR to USD using Currencylayer API.
     Returns the conversion rate as a float or None if the request fails.
     """
-    api_key = "bbc1a75d1d2515f03d362082e32fadc5"  # Replace with your Currencylayer API key
+    load_dotenv()
+    api_key = os.getenv("CURRENCYLAYER_API_KEY")  # Replace with your Currencylayer API key
     url = f"https://api.currencylayer.com/live?access_key={api_key}&source=EUR&currencies=USD"
     
     try:
@@ -17,6 +20,7 @@ def get_conversion_rate():
         if data.get("success"):
             return data["quotes"]["EURUSD"]
         else:
+            print(data)
             print(f"API error: {data.get('error', {}).get('info', 'Unknown error')}")
             return None
     except requests.exceptions.RequestException as e:
