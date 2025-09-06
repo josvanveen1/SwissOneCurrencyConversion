@@ -1,21 +1,46 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from database_client import DatabaseClient
 import json
+import os
+from dotenv import load_dotenv
 from utility import main as get_historical_data
+from utility import get_dates_from, serialize_chart_data
+from datetime import date
+from datetime import timedelta
 
 app = FastAPI()
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
+    load_dotenv()
+    one_month_ago = date.today() - timedelta(days=30)
+    dates = get_dates_from(one_month_ago)
+
+    DB = DatabaseClient(
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD")
+    )
+    DB.connect()
+
     # Get historical data
-    dates, values = get_historical_data()
+    data = DB.read_price_range(one_month_ago, date.today())
+    values = [float(v[1]) for v in data]
     # Convert dates to string format for Chart.js
-    dates = [str(date) for date in dates]
+    # dates = [str(date) for date in dates]
+    dates = [str(v[0]) for v in data]
+    print(dates)
+    DB.disconnect()
     # Prepare data for JSON
     chart_data = {
         "labels": dates,
         "values": values
     }
+
+
     html = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -44,10 +69,10 @@ async def root():
                     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
                 }}
                 h1 {{
-                    font-size: 2.5rem;
+                    font-size: 4.5rem;
                     font-weight: bold;
-                    color: #FFD700;
-                    text-align: center;
+                    color: #DC3545;
+                    text-align: left;
                     margin-bottom: 2rem;
                 }}
                 canvas {{

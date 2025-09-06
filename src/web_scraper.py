@@ -7,20 +7,25 @@ def get_page():
     # Set up Selenium with Chrome
     options = Options()
     options.add_argument('--headless')  # Run in headless mode (no browser window)
-    driver = webdriver.Chrome(options=options)  # Assume chromedriver is in PATH
+    driver = None
+    try:
+        driver = webdriver.Chrome(options=options)  # Assume chromedriver is in PATH
 
-    url = "https://www.boerse-duesseldorf.de/etc/DE000A4AJWY5/encore-issuances-s-a-comp-102-oend-z-25-unl-swissone-idx/#instrument-historie"
+        url = "https://www.boerse-duesseldorf.de/etc/DE000A4AJWY5/encore-issuances-s-a-comp-102-oend-z-25-unl-swissone-idx/#instrument-historie"
 
-    # Load the page
-    driver.get(url)
-    time.sleep(5)  # Wait for JavaScript to load content (adjust if needed)
+        # Load the page
+        driver.get(url)
+        time.sleep(5)  # Wait for JavaScript to load content (adjust if needed)
 
-    # Get the page source and parse with BeautifulSoup
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    # Close the driver
-    driver.quit()
-
-    return soup
+        # Get the page source and parse with BeautifulSoup
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        return soup
+    except Exception as e:
+        print(f"Error loading page: {e}")
+        return None
+    finally:
+        if driver:
+            driver.quit()
 
 # Function to extract historical price data
 def extract_historical_prices():

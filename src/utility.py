@@ -1,6 +1,10 @@
 from web_scraper import extract_historical_prices
+from database_client import DatabaseClient
 from currency_convert import convert_eur_to_usd
 from chart import plot_historical_prices
+import datetime
+import os
+from dotenv import load_dotenv
 
 def string_to_float(historical_prices):
     closing_prices_eur = []
@@ -21,6 +25,47 @@ def reverse_array(arr):
 
     return reverse_array
 
+def serialize_chart_data(chart_data):
+    for item in chart_data["labels"]:
+        item = str(item)
+    return chart_data
+
+def populate_database():
+    load_dotenv()
+    db = DatabaseClient(
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD")
+    )
+    db.connect()
+
+    historical_prices = extract_historical_prices()
+    closing_prices_eur = string_to_float(historical_prices)
+
+    dates = reverse_array([row['Datum'] for row in historical_prices])
+    new_dates = []
+    for date_str in dates:
+        day, month, year = map(int, date_str.split('.'))
+        date_object = datetime.date(int(year), int(month), int(day))
+        new_dates.append(date_object)
+
+    closing_price_usd = reverse_array(convert_eur_to_usd(closing_prices_eur))
+    print(new_dates)
+
+    for date, price in zip(new_dates, closing_price_usd):
+        db.insert_price(price, date)
+
+    db.disconnect()
+
+def get_dates_from(date):
+    today = datetime.date.today()
+    delta = today - date
+    dates = [date + datetime.timedelta(days=i) for i in range(delta.days + 1)]
+    return dates
+
+
 
 def main():
     historical_prices = extract_historical_prices()
@@ -32,5 +77,6 @@ def main():
 
     plot_historical_prices(dates, closing_price_usd) 
 
+
 if __name__ == "__main__":
-    print(reverse_array([1, 2, 3, 4, 5]))
+    populate_database()
