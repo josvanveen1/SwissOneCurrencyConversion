@@ -21,7 +21,8 @@ class DatabaseClient:
                 port=self.port,
                 dbname=self.dbname,
                 user=self.user,
-                password=self.password
+                password=self.password,
+                sslmode='require'  # Ensure SSL connection
             )
             self.cursor = self.connection.cursor()
             print("Database connection established.")

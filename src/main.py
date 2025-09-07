@@ -29,11 +29,9 @@ async def root():
     # Get historical data
     data = DB.read_price_range(one_month_ago, date.today())
     values = [float(v[1]) for v in data]
-    # Convert dates to string format for Chart.js
-    # dates = [str(date) for date in dates]
     dates = [str(v[0]) for v in data]
-    print(dates)
     DB.disconnect()
+
     # Prepare data for JSON
     chart_data = {
         "labels": dates,
@@ -69,7 +67,7 @@ async def root():
                     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
                 }}
                 h1 {{
-                    font-size: 4.5rem;
+                    font-size: 26px;
                     font-weight: bold;
                     color: #DC3545;
                     text-align: left;
@@ -91,7 +89,6 @@ async def root():
         </head>
         <body>
             <div class="container">
-                <h1>Historical Financial Data (USD)</h1>
                 <div class="chart-container">
                     <canvas id="priceChart"></canvas>
                 </div>

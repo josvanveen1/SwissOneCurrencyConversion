@@ -37,7 +37,7 @@ def populate_database():
         port=int(os.getenv("DB_PORT")),
         dbname=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
+        password=os.getenv("DB_PASSWORD"),
     )
     db.connect()
 
@@ -65,7 +65,30 @@ def get_dates_from(date):
     dates = [date + datetime.timedelta(days=i) for i in range(delta.days + 1)]
     return dates
 
-
+def create_finance_schema_and_table():
+    load_dotenv()
+    db = DatabaseClient(
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+    db.connect()
+    try:
+        db.cursor.execute("""
+            CREATE SCHEMA IF NOT EXISTS finance;
+            CREATE TABLE IF NOT EXISTS finance.daily_prices (
+                price_date DATE PRIMARY KEY,
+                price FLOAT
+            );
+        """)
+        db.connection.commit()
+        print("Schema and table created or already exist.")
+    except Exception as e:
+        print(f"Error creating schema/table: {e}")
+    finally:
+        db.disconnect()
 
 def main():
     historical_prices = extract_historical_prices()
