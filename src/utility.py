@@ -25,12 +25,8 @@ def reverse_array(arr):
 
     return reverse_array
 
-def serialize_chart_data(chart_data):
-    for item in chart_data["labels"]:
-        item = str(item)
-    return chart_data
 
-def populate_database():
+async def populate_database():
     load_dotenv()
     db = DatabaseClient(
         host=os.getenv("DB_HOST"),
@@ -38,6 +34,7 @@ def populate_database():
         dbname=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
+        sslmode=os.getenv("DB_SSLMODE", "require")
     )
     db.connect()
 
@@ -89,16 +86,6 @@ def create_finance_schema_and_table():
         print(f"Error creating schema/table: {e}")
     finally:
         db.disconnect()
-
-def main():
-    historical_prices = extract_historical_prices()
-    closing_prices_eur = string_to_float(historical_prices)
-
-    dates = reverse_array([row['Datum'] for row in historical_prices])
-    closing_price_usd = reverse_array(convert_eur_to_usd(closing_prices_eur)) 
-    return dates, closing_price_usd
-
-    plot_historical_prices(dates, closing_price_usd) 
 
 
 if __name__ == "__main__":

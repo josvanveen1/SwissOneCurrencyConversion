@@ -4,12 +4,22 @@ from database_client import DatabaseClient
 import json
 import os
 from dotenv import load_dotenv
-from utility import main as get_historical_data
-from utility import get_dates_from, serialize_chart_data
+from utility import get_dates_from, populate_database 
 from datetime import date
 from datetime import timedelta
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from pytz import utc
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+scheduler = AsyncIOScheduler(timezone=utc)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler.start()
+    yield
+    scheduler.shutdown()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -22,7 +32,8 @@ async def root():
         port=int(os.getenv("DB_PORT")),
         dbname=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
+        password=os.getenv("DB_PASSWORD"),
+        sslmode=os.getenv("DB_SSLMODE", "require")
     )
     DB.connect()
 
@@ -39,124 +50,127 @@ async def root():
     }
 
 
-    html = f"""
+    html = """
     <!DOCTYPE html>
-    <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Price in USD</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-            <style>
-                body {{
-                    font-family: 'Roboto', sans-serif;
-                    background-color: #121212;
-                    color: white;
-                }}
-                .container {{
-                    max-width: 1200px;
-                    margin: 0 auto;
-                    padding: 2rem;
-                }}
-                .chart-container {{
-                    background-color: #1a1a1a;
-                    padding: 1.5rem;
-                    border-radius: 0.5rem;
-                    height: 500px;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-                }}
-                h1 {{
-                    font-size: 26px;
-                    font-weight: bold;
-                    color: #DC3545;
-                    text-align: left;
-                    margin-bottom: 2rem;
-                }}
-                canvas {{
-                    max-width: 100%;
-                    height: 100%;
-                }}
-                @media (max-width: 640px) {{
-                    h1 {{
-                        font-size: 1.5rem;
-                    }}
-                    .container {{
-                        padding: 1rem;
-                    }}
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="chart-container">
-                    <canvas id="priceChart"></canvas>
-                </div>
-            </div>
-            <script>
-                const chartData = {json.dumps(chart_data)};
-                const ctx = document.getElementById('priceChart').getContext('2d');
-                new Chart(ctx, {{
-                    type: 'line',
-                    data: {{
-                        labels: chartData.labels,
-                        datasets: [{{
-                            label: 'Closing Price (USD)',
-                            data: chartData.values,
-                            borderColor: '#00A3FF',
-                            backgroundColor: 'rgba(0, 163, 255, 0.2)',
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 5,
-                            pointHoverRadius: 8
-                        }}]
-                    }},
-                    options: {{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {{
-                            legend: {{
-                                labels: {{
-                                    color: 'white'
-                                }}
-                            }},
-                            tooltip: {{
-                                backgroundColor: '#1a1a1a',
-                                titleColor: 'white',
-                                bodyColor: 'white',
-                                borderColor: '#FFD700',
-                                borderWidth: 1
-                            }}
-                        }},
-                        scales: {{
-                            x: {{
-                                title: {{
-                                    display: true,
-                                    text: 'Date',
-                                    color: 'white'
-                                }},
-                                ticks: {{
-                                    color: 'white'
-                                }}
-                            }},
-                            y: {{
-                                title: {{
-                                    display: true,
-                                    text: 'Closing Price (USD)',
-                                    color: 'white'
-                                }},
-                                ticks: {{
-                                    color: 'white'
-                                }},
-                                grid: {{
-                                    color: 'gray'
-                                }}
-                            }}
-                        }}
-                    }}
-                }});
-            </script>
-        </body>
-    </html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Price in USD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      body {
+        font-family: 'Roboto', sans-serif;
+        background: linear-gradient(135deg, #0f0f0f, #1e1e1e);
+        color: white;
+      }
+      canvas {
+        max-width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container mx-auto px-4 py-8 max-w-5xl">
+      <!-- Heading Section -->
+      <div class="mb-6 text-center sm:text-left">
+        <h1 class="text-3xl sm:text-4xl font-bold text-red-500 tracking-tight mb-2">
+          Price in USD
+        </h1>
+        <p class="text-gray-300 text-sm sm:text-base">
+          Chart showing recent closing prices in USD.
+        </p>
+      </div>
+
+      <!-- Chart Card -->
+      <div
+        class="bg-[#1a1a1a] p-6 rounded-2xl shadow-xl h-[500px] flex items-center justify-center"
+      >
+        <canvas id="priceChart"></canvas>
+      </div>
+    </div>
+
+    <script>
+      const chartData = REPLACE_CHART_DATA_HERE;
+      const ctx = document.getElementById('priceChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: chartData.labels,
+          datasets: [
+            {
+              label: 'Closing Price (USD)',
+              data: chartData.values,
+              borderColor: '#F44336',
+              backgroundColor: 'rgba(244, 67, 54, 0.2)',
+              fill: true,
+              tension: 0,
+              pointRadius: 4,
+              pointHoverRadius: 7,
+              pointBackgroundColor: '#3B82F6',
+              pointBorderColor: '#fff',
+              pointBorderWidth: 2
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            tooltip: {
+              backgroundColor: '#111827',
+              titleColor: '#facc15',
+              bodyColor: '#f5f5f5',
+              borderColor: '#3B82F6',
+              borderWidth: 1,
+              padding: 10
+            }
+          },
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: 'Date',
+                color: '#f5f5f5',
+                font: {
+                  weight: 'bold'
+                }
+              },
+              ticks: {
+                color: '#d1d5db'
+              },
+              grid: {
+                color: 'rgba(255,255,255,0.05)'
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: 'Closing Price (USD)',
+                color: '#f5f5f5',
+                font: {
+                  weight: 'bold'
+                }
+              },
+              ticks: {
+                color: '#d1d5db'
+              },
+              grid: {
+                color: 'rgba(255,255,255,0.1)'
+              }
+            }
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
+
     """
+    html = html.replace("REPLACE_CHART_DATA_HERE", json.dumps(chart_data))
     return HTMLResponse(content=html)
+
+@scheduler.scheduled_job('cron', hour='11', minute='19')
+async def fetch_data_job():
+    await populate_database()

@@ -3,15 +3,17 @@ from psycopg2 import Error
 from datetime import date
 
 class DatabaseClient:
-    def __init__(self, host, port, dbname, user, password):
+    def __init__(self, host, port, dbname, user, password, sslmode="require"):
         """Initialize the database connection."""
         self.host = host
         self.port = port
         self.dbname = dbname
         self.user = user
         self.password = password
+        self.sslmode = sslmode
         self.connection = None
         self.cursor = None
+        
 
     def connect(self):
         """Establish a connection to the PostgreSQL database."""
@@ -22,7 +24,7 @@ class DatabaseClient:
                 dbname=self.dbname,
                 user=self.user,
                 password=self.password,
-                sslmode='require'  # Ensure SSL connection
+                sslmode=self.sslmode  # Ensure SSL connection
             )
             self.cursor = self.connection.cursor()
             print("Database connection established.")
