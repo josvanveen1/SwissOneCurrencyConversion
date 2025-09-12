@@ -25,7 +25,7 @@ app = FastAPI(lifespan=lifespan)
 async def root():
     load_dotenv()
     one_month_ago = date.today() - timedelta(days=30)
-    # dates = get_dates_from(one_month_ago)
+    dates = get_dates_from(one_month_ago)
 
     DB = DatabaseClient(
         host=os.getenv("DB_HOST"),
@@ -38,7 +38,7 @@ async def root():
     DB.connect()
 
     # Get historical data
-    data = DB.read_price_range(one_month_ago, date.today())
+    data = DB.read_price_range(date(2024, 10, 24), date.today())
     dates = [str(v[0]) for v in data]
     price_usd = [float(v[1]) for v in data]
     price_eur = [float(v[2]) for v in data]
@@ -79,7 +79,7 @@ async def root():
   <body>
     <div class="container mx-auto px-4 py-8 max-w-5xl">
       <!-- Heading Section -->
-      <div class="mb-6 text-center sm:text-left">
+      <div class="mb-2 text-center sm:text-left">
         <h1 class="text-3xl sm:text-4xl font-bold text-red-500 tracking-tight mb-2">
           Price Chart
         </h1>
@@ -89,19 +89,32 @@ async def root():
       </div>
 
       <div class='mb-4 text-center sm:text-left'>
-        <h2 id="mostRecentPrice" class="text-3xl font-semibold">Most Recent Price: $0.00</h2>
-        <h2 id="mostRecentDate" class="text-sm text-gray-400">Most Recent Date: 2023-01-01</h2>
+        <div class="flex items-baseline space-x-4">
+            <h2 id="mostRecentPrice" class="text-3xl font-semibold">$0.00</h2>
+            <h3 id="performanceChange">0%</h3>
+        </div>
+        <h2 id="mostRecentDate" class="text-sm text-gray-400">2023-01-01</h2>
       </div>
 
-      <!-- Button Section -->
-      <div class="mb-4 text-center sm:text-left">
-        <button
-          id="toggleCurrency"
-          class="bg-transparent border-2 border-red-500 hover:bg-red-500 text-white py-1 px-2 rounded-lg transition duration-200"
-        >
-          Switch to EUR
-        </button>
-      </div>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+        <div class="mb-4 text-center sm:text-left">
+            <input type="date" id="startDate" min="2024-10-24" class="p-2 rounded-lg bg-gray-800 text-white border border-gray-700 mr-2" />
+            <input type="date" id="endDate" class="p-2 rounded-lg bg-gray-800 text-white border border-gray-700 mr-2" />
+            <button id="filterButton" class="bg-red-500 hover:bg-red-600 text-white py-1 px-4 rounded-lg transition duration-200">
+            Filter
+            </button>
+        </div>
+
+        <!-- Button Section -->
+        <div class="mb-4 text-center sm:text-left">
+            <button
+            id="toggleCurrency"
+            class="bg-transparent border-2 border-red-500 hover:bg-red-500 text-white py-1 px-2 rounded-lg transition duration-200"
+            >
+            Switch to EUR
+            </button>
+        </div>
+       </div>
 
       <!-- Chart Card -->
       <div
@@ -111,104 +124,161 @@ async def root():
       </div>
     </div>
 
-    <script>
-      const chartData = REPLACE_CHART_DATA_HERE;
-      const ctx = document.getElementById('priceChart').getContext('2d');
-      let isUSD = true;
+      <script>
+        const chartData = REPLACE_CHART_DATA_HERE;
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        let performance = 0;
+        let isUSD = true;
 
-      const chartConfig = {
-        type: 'line',
-        data: {
-          labels: chartData.labels,
-          datasets: [
-            {
-              label: 'Closing Price (USD)',
-              data: chartData.usd_values,
-              borderColor: '#F44336',
-              backgroundColor: 'rgba(244, 67, 54, 0.2)',
-              fill: true,
-              tension: 0,
-              pointRadius: 4,
-              pointHoverRadius: 7,
-              pointBackgroundColor: '#3B82F6',
-              pointBorderColor: '#fff',
-              pointBorderWidth: 2
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            tooltip: {
-              backgroundColor: '#111827',
-              titleColor: '#facc15',
-              bodyColor: '#f5f5f5',
-              borderColor: '#3B82F6',
-              borderWidth: 1,
-              padding: 10
-            }
+        let currentLabels = [...chartData.labels];
+        let currentUSD = [...chartData.usd_values];
+        let currentEUR = [...chartData.eur_values];
+
+        function calculatePerformance() {
+          const initialPrice = isUSD ? currentUSD[0] : currentEUR[0];
+          const mostRecentPrice = isUSD ? currentUSD[currentUSD.length - 1] : currentEUR[currentEUR.length - 1];
+          performance = ((mostRecentPrice - initialPrice) / initialPrice) * 100;
+          
+          let symbol = performance >= 0 ? '+' : '';
+          const performanceElement = document.getElementById('performanceChange');
+          performanceElement.textContent = `${symbol}${performance.toFixed(2)}%`;
+          performanceElement.style.color = performance >= 0 ? '#4CAF50' : '#F44336';
+
+        }
+
+        function filterChartData(startDate, endDate) {
+          const start = new Date(startDate);
+          const end = new Date(endDate);
+
+          const filteredLabels = [];
+          const filteredUSD = [];
+          const filteredEUR = [];
+
+          chartData.labels.forEach((label, index) => {
+              const currentDate = new Date(label);
+              if (currentDate >= start && currentDate <= end) {
+                  filteredLabels.push(label);
+                  filteredUSD.push(chartData.usd_values[index]);
+                  filteredEUR.push(chartData.eur_values[index]);
+              }
+          });
+
+          currentLabels = filteredLabels;
+          currentUSD = filteredUSD;
+          currentEUR = filteredEUR;
+
+          // Update the chart with the filtered data
+          priceChart.data.labels = currentLabels;
+          priceChart.data.datasets[0].data = isUSD ? currentUSD : currentEUR;
+          priceChart.update();
+        }
+
+        const chartConfig = {
+          type: 'line',
+          data: {
+            labels: chartData.labels,
+            datasets: [
+              {
+                label: 'Closing Price (USD)',
+                data: chartData.usd_values,
+                borderColor: '#F44336',
+                backgroundColor: 'rgba(244, 67, 54, 0.2)',
+                fill: true,
+                tension: 0,
+                pointRadius: 1,
+                pointHoverRadius: 4,
+                pointBackgroundColor: '#3B82F6',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 1
+              }
+            ]
           },
-          scales: {
-            x: {
-              title: {
-                display: true,
-                text: 'Date',
-                color: '#f5f5f5',
-                font: {
-                  weight: 'bold'
-                }
-              },
-              ticks: {
-                color: '#d1d5db'
-              },
-              grid: {
-                color: 'rgba(255,255,255,0.05)'
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              tooltip: {
+                backgroundColor: '#111827',
+                titleColor: '#facc15',
+                bodyColor: '#f5f5f5',
+                borderColor: '#3B82F6',
+                borderWidth: 1,
+                padding: 10
               }
             },
-            y: {
-              title: {
-                display: true,
-                text: 'Closing Price (USD)',
-                color: '#f5f5f5',
-                font: {
-                  weight: 'bold'
+            scales: {
+              x: {
+                title: {
+                  display: true,
+                  text: 'Date',
+                  color: '#f5f5f5',
+                  font: {
+                    weight: 'bold'
+                  }
+                },
+                ticks: {
+                  color: '#d1d5db'
+                },
+                grid: {
+                  color: 'rgba(255,255,255,0.05)'
                 }
               },
-              ticks: {
-                color: '#d1d5db'
-              },
-              grid: {
-                color: 'rgba(255,255,255,0.1)'
+              y: {
+                title: {
+                  display: true,
+                  text: 'Closing Price (USD)',
+                  color: '#f5f5f5',
+                  font: {
+                    weight: 'bold'
+                  }
+                },
+                ticks: {
+                  color: '#d1d5db'
+                },
+                grid: {
+                  color: 'rgba(255,255,255,0.1)'
+                }
               }
             }
           }
-        }
-      };
+        };
 
-      const priceChart = new Chart(ctx, chartConfig);
+        const priceChart = new Chart(ctx, chartConfig);
 
-      document.getElementById('mostRecentPrice').textContent = `$${isUSD ? chartData.most_recent_price_usd.toFixed(2) : chartData.most_recent_price_eur.toFixed(2)}`;
-      document.getElementById('mostRecentDate').textContent = `${chartData.most_recent_date}`;
+        document.getElementById('mostRecentPrice').textContent = `$${isUSD ? chartData.most_recent_price_usd.toFixed(2) : chartData.most_recent_price_eur.toFixed(2)}`;
+        document.getElementById('mostRecentDate').textContent = `${chartData.most_recent_date}`;
+        calculatePerformance(); // <-- Calculate and display performance on load
 
-      document.getElementById('toggleCurrency').addEventListener('click', () => {
-        isUSD = !isUSD;
-        const dataset = priceChart.data.datasets[0];
-        dataset.data = isUSD ? chartData.usd_values : chartData.eur_values;
-        dataset.label = isUSD ? 'Closing Price (USD)' : 'Closing Price (EUR)';
-        dataset.borderColor = isUSD ? '#F44336' : '#3B82F6';
-        dataset.backgroundColor = isUSD ? 'rgba(244, 67, 54, 0.2)' : 'rgba(59, 130, 246, 0.2)';
-        priceChart.options.scales.y.title.text = isUSD ? 'Closing Price (USD)' : 'Closing Price (EUR)';
-        document.getElementById('toggleCurrency').textContent = isUSD ? 'Switch to EUR' : 'Switch to USD';
-        document.getElementById('mostRecentPrice').textContent = isUSD
-          ? `$${chartData.most_recent_price_usd.toFixed(2)}`
-          : `€${chartData.most_recent_price_eur.toFixed(2)}`;
-        priceChart.update();
-      });
-    </script>
+        document.getElementById('filterButton').addEventListener('click', () => {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            if (startDate && endDate) {
+            // Call a function to filter the chart data based on the selected dates
+            filterChartData(startDate, endDate);
+              calculatePerformance();
+            }
+        });
+          document.getElementById('toggleCurrency').addEventListener('click', () => {
+              isUSD = !isUSD;
+              const dataset = priceChart.data.datasets[0];
+
+              dataset.data = isUSD ? currentUSD : currentEUR;  // ✅ uses filtered data if available
+              dataset.label = isUSD ? 'Closing Price (USD)' : 'Closing Price (EUR)';
+              dataset.borderColor = isUSD ? '#F44336' : '#3B82F6';
+              dataset.backgroundColor = isUSD ? 'rgba(244, 67, 54, 0.2)' : 'rgba(59, 130, 246, 0.2)';
+              priceChart.options.scales.y.title.text = isUSD ? 'Closing Price (USD)' : 'Closing Price (EUR)';
+              document.getElementById('toggleCurrency').textContent = isUSD ? 'Switch to EUR' : 'Switch to USD';
+              calculatePerformance(); // <-- Update performance on currency switch
+              priceChart.update();
+          });
+      </script>
   </body>
 </html>
     """
+    # Inject JS to calculate and display performance on load
+    injected_js = """
+    """
+    html = html.replace("<script>\n      const chartData = REPLACE_CHART_DATA_HERE;", injected_js)
     html = html.replace("REPLACE_CHART_DATA_HERE", json.dumps(chart_data))
     return HTMLResponse(content=html)
 
