@@ -33,22 +33,27 @@ async def root():
         dbname=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
-        sslmode=os.getenv("DB_SSLMODE", "require")
+        sslmode=os.getenv("DB_SSLMODE", "allow")
     )
     DB.connect()
 
     # Get historical data
     data = DB.read_price_range(one_month_ago, date.today())
-    values = [float(v[1]) for v in data]
     dates = [str(v[0]) for v in data]
+    price_usd = [float(v[1]) for v in data]
+    price_eur = [float(v[2]) for v in data]
+
     DB.disconnect()
 
     # Prepare data for JSON
     chart_data = {
         "labels": dates,
-        "values": values
+        "usd_values": price_usd,
+        "eur_values": price_eur,
+        "most_recent_date": str(dates[-1]),
+        "most_recent_price_usd": price_usd[-1],
+        "most_recent_price_eur": price_eur[-1]
     }
-
 
     html = """
     <!DOCTYPE html>
@@ -56,7 +61,7 @@ async def root():
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Price in USD</title>
+    <title>Price Chart</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -76,11 +81,21 @@ async def root():
       <!-- Heading Section -->
       <div class="mb-6 text-center sm:text-left">
         <h1 class="text-3xl sm:text-4xl font-bold text-red-500 tracking-tight mb-2">
-          Price in USD
+          Price Chart
         </h1>
         <p class="text-gray-300 text-sm sm:text-base">
-          Chart showing recent closing prices in USD.
+          Chart showing recent closing prices
         </p>
+      </div>
+
+      <!-- Button Section -->
+      <div class="mb-4 text-center sm:text-left">
+        <button
+          id="toggleCurrency"
+          class="bg-transparent border-2 border-red-500 hover:bg-red-500 text-white py-1 px-2 rounded-lg transition duration-200"
+        >
+          Switch to EUR
+        </button>
       </div>
 
       <!-- Chart Card -->
@@ -94,14 +109,16 @@ async def root():
     <script>
       const chartData = REPLACE_CHART_DATA_HERE;
       const ctx = document.getElementById('priceChart').getContext('2d');
-      new Chart(ctx, {
+      let isUSD = true;
+
+      const chartConfig = {
         type: 'line',
         data: {
           labels: chartData.labels,
           datasets: [
             {
               label: 'Closing Price (USD)',
-              data: chartData.values,
+              data: chartData.usd_values,
               borderColor: '#F44336',
               backgroundColor: 'rgba(244, 67, 54, 0.2)',
               fill: true,
@@ -162,11 +179,24 @@ async def root():
             }
           }
         }
+      };
+
+      const priceChart = new Chart(ctx, chartConfig);
+
+      document.getElementById('toggleCurrency').addEventListener('click', () => {
+        isUSD = !isUSD;
+        const dataset = priceChart.data.datasets[0];
+        dataset.data = isUSD ? chartData.usd_values : chartData.eur_values;
+        dataset.label = isUSD ? 'Closing Price (USD)' : 'Closing Price (EUR)';
+        dataset.borderColor = isUSD ? '#F44336' : '#3B82F6';
+        dataset.backgroundColor = isUSD ? 'rgba(244, 67, 54, 0.2)' : 'rgba(59, 130, 246, 0.2)';
+        priceChart.options.scales.y.title.text = isUSD ? 'Closing Price (USD)' : 'Closing Price (EUR)';
+        document.getElementById('toggleCurrency').textContent = isUSD ? 'Switch to EUR' : 'Switch to USD';
+        priceChart.update();
       });
     </script>
   </body>
 </html>
-
     """
     html = html.replace("REPLACE_CHART_DATA_HERE", json.dumps(chart_data))
     return HTMLResponse(content=html)
