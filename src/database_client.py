@@ -3,7 +3,7 @@ from psycopg2 import Error
 from datetime import date
 
 class DatabaseClient:
-    def __init__(self, host, port, dbname, user, password, sslmode="require"):
+    def __init__(self, host, port, dbname, user, password, sslmode="allow"):
         """Initialize the database connection."""
         self.host = host
         self.port = port
@@ -39,16 +39,16 @@ class DatabaseClient:
         if self.connection:
             self.connection.close()
             print("Database connection closed.")
-        
-    def insert_price(self, price: float, price_date: date):
+
+    def insert_price(self, price: float, price_eur: float, price_date: date):
         """Insert a new price for a given date"""
         try:
             query = """
-            INSERT INTO finance.daily_prices (price_date, price)
-            VALUES (%s, %s)
+            INSERT INTO finance.daily_prices (price_date, price, price_eur)
+            VALUES (%s, %s, %s)
             ON CONFLICT (price_date) DO NOTHING;
             """
-            self.cursor.execute(query, (price_date, price))
+            self.cursor.execute(query, (price_date, price, price_eur))
             self.connection.commit()
             print(f"Inserted/Updated price {price} for date {price_date}.")
         except Error as e:
