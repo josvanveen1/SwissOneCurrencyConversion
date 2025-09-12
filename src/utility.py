@@ -2,6 +2,7 @@ from web_scraper import extract_historical_prices
 from database_client import DatabaseClient
 from currency_convert import convert_eur_to_usd
 from chart import plot_historical_prices
+from file_reader import parse_stock_data
 import datetime
 import os
 from dotenv import load_dotenv
@@ -44,8 +45,9 @@ def populate_database():
 
     historical_prices = extract_historical_prices()
     closing_prices_eur = string_to_float(historical_prices)
+    # dates, opens, highs, lows, closing_prices_eur, volumes = parse_stock_data("src/stock_data.txt")
 
-    dates = reverse_array([row['Datum'] for row in historical_prices])
+    dates = ([row['Datum'] for row in historical_prices])
     new_dates = []
     for date_str in dates:
         day, month, year = map(int, date_str.split('.'))
@@ -53,8 +55,7 @@ def populate_database():
         new_dates.append(date_object)
 
 
-    closing_price_usd = reverse_array(convert_eur_to_usd(closing_prices_eur))
-    closing_prices_eur = reverse_array(closing_prices_eur)
+    closing_price_usd = convert_eur_to_usd(closing_prices_eur)
     print(new_dates)
 
     for date, price, price_eur in zip(new_dates, closing_price_usd, closing_prices_eur):
