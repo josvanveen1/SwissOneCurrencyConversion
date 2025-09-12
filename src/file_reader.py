@@ -75,14 +75,3 @@ def parse_stock_data(file_path):
         return None
         
     return dates, opens, highs, lows, closes, volumes
-
-
-file_path = "src/stock_data.txt"
-dates, opens, highs, lows, closes, volumes = parse_stock_data(file_path)
-if dates is not None:
-    print("Dates:", dates)
-    print("Opens:", opens)
-    print("Highs:", highs)
-    print("Lows:", lows)
-    print("Closes:", closes)
-    print("Volumes:", volumes)
