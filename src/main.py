@@ -25,7 +25,7 @@ app = FastAPI(lifespan=lifespan)
 async def root():
     load_dotenv()
     one_month_ago = date.today() - timedelta(days=30)
-    dates = get_dates_from(one_month_ago)
+    # dates = get_dates_from(one_month_ago)
 
     DB = DatabaseClient(
         host=os.getenv("DB_HOST"),
@@ -86,6 +86,11 @@ async def root():
         <p class="text-gray-300 text-sm sm:text-base">
           Chart showing recent closing prices
         </p>
+      </div>
+
+      <div class='mb-4 text-center sm:text-left'>
+        <h2 id="mostRecentPrice" class="text-3xl font-semibold">Most Recent Price: $0.00</h2>
+        <h2 id="mostRecentDate" class="text-sm text-gray-400">Most Recent Date: 2023-01-01</h2>
       </div>
 
       <!-- Button Section -->
@@ -183,6 +188,9 @@ async def root():
 
       const priceChart = new Chart(ctx, chartConfig);
 
+      document.getElementById('mostRecentPrice').textContent = `$${isUSD ? chartData.most_recent_price_usd.toFixed(2) : chartData.most_recent_price_eur.toFixed(2)}`;
+      document.getElementById('mostRecentDate').textContent = `${chartData.most_recent_date}`;
+
       document.getElementById('toggleCurrency').addEventListener('click', () => {
         isUSD = !isUSD;
         const dataset = priceChart.data.datasets[0];
@@ -192,6 +200,9 @@ async def root():
         dataset.backgroundColor = isUSD ? 'rgba(244, 67, 54, 0.2)' : 'rgba(59, 130, 246, 0.2)';
         priceChart.options.scales.y.title.text = isUSD ? 'Closing Price (USD)' : 'Closing Price (EUR)';
         document.getElementById('toggleCurrency').textContent = isUSD ? 'Switch to EUR' : 'Switch to USD';
+        document.getElementById('mostRecentPrice').textContent = isUSD
+          ? `$${chartData.most_recent_price_usd.toFixed(2)}`
+          : `€${chartData.most_recent_price_eur.toFixed(2)}`;
         priceChart.update();
       });
     </script>
