@@ -74,7 +74,7 @@ class DatabaseClient:
         """Read prices for a date range, inclusive."""
         try:
             query = """
-                SELECT price_date, price
+                SELECT price_date, price, price_eur
                 FROM finance.daily_prices
                 WHERE price_date BETWEEN %s AND %s
                 ORDER BY price_date;
