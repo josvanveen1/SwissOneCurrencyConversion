@@ -31,7 +31,7 @@ def convert_eur_to_usd(amount):
     rate = get_conversion_rate()
     amount_usd = []
     for i in amount:
-        amount_usd.append(i * rate)
+        amount_usd.append(float(i) * rate)
     return amount_usd
 
 if __name__=="__main__":

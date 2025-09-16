@@ -94,9 +94,37 @@ def create_finance_schema_and_table():
     finally:
         db.disconnect()
 
-def main():
-    populate_database()
+def update_values_on_currency_change():
+    load_dotenv()
+    db = DatabaseClient(
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+    db.connect()
+    try:
+        db.cursor.execute("SELECT price_date, price_eur FROM finance.daily_prices;")
+        rows = db.cursor.fetchall()
 
+        date = [row[0] for row in rows]
+        price_eur = [row[1] for row in rows]
+        price_usd = convert_eur_to_usd(price_eur)
+        for d, p in zip(date, price_usd):
+            try:
+                db.cursor.execute("""
+                        UPDATE finance.daily_prices
+                        SET price = %s
+                        WHERE price_date = %s;
+                    """, (p, d))
+            except Exception as e:
+                print(f"Error updating price for {d}: {e}")
+
+    except Exception as e:
+        print(f"Error updating prices: {e}")
+    finally:
+        db.disconnect()
 
 if __name__ == "__main__":
-    populate_database()
+    update_values_on_currency_change()
