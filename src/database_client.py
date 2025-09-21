@@ -126,6 +126,15 @@ class DatabaseClient:
             print(f"Error updating price: {e}")
             self.connection.rollback()
 
+    def price_exists(self, price_date: date) -> bool:
+        """Check if a price entry exists for the given date."""
+        try:
+            query = "SELECT 1 FROM finance.daily_prices WHERE price_date = %s LIMIT 1;"
+            self.cursor.execute(query, (price_date,))
+            return self.cursor.fetchone() is not None
+        except Error as e:
+            print(f"Error checking if price exists: {e}")
+            return False
 
     def __enter__(self):
         """Support for context manager entry."""
