@@ -4,128 +4,146 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
-from fake_useragent import UserAgent
 import time
 import random
 import logging
-import json
-import os
+from fake_useragent import UserAgent
+from retrying import retry
 
-# Set up logging
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def get_page_with_retries(max_retries=3):
-    ua = UserAgent()  # For random user agents
-    options = Options()
-    options.add_argument('--headless')  # Headless mode
-    options.add_argument('--no-sandbox')  # Required for Render
-    options.add_argument('--disable-dev-shm-usage')  # Avoid memory issues in containers
-    options.add_argument(f'--user-agent={ua.random}')  # Random user agent
-    options.add_argument('--disable-blink-features=AutomationControlled')  # Hide Selenium
-    options.add_experimental_option('excludeSwitches', ['enable-automation'])  # Hide automation flags
-    options.add_argument('accept-language=en-US,en;q=0.9')
-    options.add_argument('accept=text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8')
+# Optional: Proxy list (you can use a proxy service like BrightData, Oxylabs, or free proxies)
+PROXIES = [
+    # Example: 'http://proxy1:port',
+    # Add proxies here or use a proxy service API
+]
 
-    # Optional: Proxy setup (use a paid residential proxy service like BrightData or Smartproxy)
-    # proxy = "http://username:password@proxy_host:port"
-    # options.add_argument(f'--proxy-server={proxy}')
+def get_random_proxy():
+    return random.choice(PROXIES) if PROXIES else None
+
+def retry_if_exception(exception):
+    """Retry on specific exceptions."""
+    return isinstance(exception, (Exception,))
+
+@retry(retry_on_exception=retry_if_exception, stop_max_attempt_number=3, wait_fixed=2000)
+def get_page():
+    """Fetch the page using Selenium with anti-detection measures."""
+    # Initialize User-Agent rotator
+    ua = UserAgent()
+    user_agent = ua.random
+    logger.info(f"Using User-Agent: {user_agent}")
+
+    # Set up Selenium with Chrome
+    options = Options()
+    options.add_argument('--headless')  # Run in headless mode
+    options.add_argument(f'--user-agent={user_agent}')
+    options.add_argument('--disable-blink-features=AutomationControlled')  # Avoid detection
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')  # Set a realistic window size
+    options.add_experimental_option('excludeSwitches', ['enable-automation'])
+    options.add_experimental_option('useAutomationExtension', False)
+
+    # Optional: Add proxy
+    proxy = get_random_proxy()
+    if proxy:
+        options.add_argument(f'--proxy-server={proxy}')
+        logger.info(f"Using proxy: {proxy}")
 
     driver = None
-    url = "https://www.boerse-duesseldorf.de/etc/DE000A4AJWY5/encore-issuances-s-a-comp-102-oend-z-25-unl-swissone-idx/#instrument-historie"
+    try:
+        driver = webdriver.Chrome(options=options)
+        driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": user_agent})
 
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"Attempt {attempt + 1}/{max_retries} to load page")
-            driver = webdriver.Chrome(options=options)
-            driver.set_page_load_timeout(30)  # Prevent hanging
+        url = "https://www.boerse-duesseldorf.de/etc/DE000A4AJWY5/encore-issuances-s-a-comp-102-oend-z-25-unl-swissone-idx/#instrument-historie"
+        logger.info(f"Fetching URL: {url}")
 
-            # Navigate and handle potential cookie banner
-            driver.get(url)
-            time.sleep(random.uniform(3, 7))  # Random delay for JS to load
+        # Load the page
+        driver.get(url)
 
-            # Check for cookie consent (adjust selector based on site)
-            try:
-                cookie_button = WebDriverWait(driver, 5).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.accept-cookies, [id*="cookie-accept"]'))
-                )
-                cookie_button.click()
-                logger.info("Accepted cookie banner")
-                time.sleep(random.uniform(1, 3))
-            except:
-                logger.info("No cookie banner found")
+        # Wait for the table to load (adjust selector as needed)
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, 'instrument-historie'))
+        )
 
-            # Check for paywall/402
-            if "402" in driver.page_source or "Payment Required" in driver.page_source:
-                logger.error("Encountered 402 Payment Required")
-                return None
+        # Random delay to mimic human behavior
+        time.sleep(random.uniform(3, 7))
 
-            # Wait for the history section to load
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.ID, 'instrument-historie'))
-            )
+        # Scroll to ensure all dynamic content loads (optional)
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(random.uniform(1, 3))
 
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            return soup
-        except Exception as e:
-            logger.error(f"Error loading page: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(random.uniform(5, 10))  # Wait before retry
-            continue
-        finally:
-            if driver:
-                driver.quit()
-    logger.error("Failed to load page after max retries")
-    return None
+        # Get the page source and parse with BeautifulSoup
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        return soup
+    except Exception as e:
+        logger.error(f"Error loading page: {e}")
+        raise
+    finally:
+        if driver:
+            driver.quit()
+            logger.info("Browser closed")
 
 def extract_historical_prices():
-    soup = get_page_with_retries()
+    """Extract historical price data from the page."""
+    soup = get_page()
     if not soup:
-        logger.error("No page content to parse")
+        logger.error("Failed to retrieve page content")
         return []
 
     historical_data = []
-    cache_file = 'historical_data.json'
+    try:
+        # Find the historical section by id
+        hist_section = soup.find('div', id='instrument-historie')
+        if not hist_section:
+            logger.warning("Historical section not found")
+            return []
 
-    # Check cache to avoid unnecessary scraping
-    if os.path.exists(cache_file):
-        with open(cache_file, 'r') as f:
-            cached_data = json.load(f)
-        last_cached_date = max(cached_data, key=lambda x: x.get('Date', ''), default={}).get('Date', '')
-        if last_cached_date >= time.strftime('%Y-%m-%d'):  # Cache valid for today
-            logger.info("Using cached data")
-            return cached_data
-
-    # Find the historical section
-    hist_section = soup.find('div', id='instrument-historie')
-    if hist_section:
+        # Find the table within the section
         table = hist_section.find('table', class_='kurs-table') or hist_section.find('table')
-        if table:
-            headers = [th.text.strip() for th in table.find('thead').find_all('th')]
-            tbody = table.find('tbody')
-            if tbody:
-                for tr in tbody.find_all('tr'):
-                    cells = [td.text.strip() for td in tr.find_all('td')]
-                    if len(cells) == len(headers):
-                        row = dict(zip(headers, cells))
-                        historical_data.append(row)
-                logger.info(f"Extracted {len(historical_data)} rows")
-                
-                # Cache results
-                with open(cache_file, 'w') as f:
-                    json.dump(historical_data, f)
-            else:
-                logger.error("No table body found")
-        else:
-            logger.error("No table found in history section")
-    else:
-        logger.error("No instrument-historie section found")
-    
-    return historical_data
+        if not table:
+            logger.warning("Table not found in historical section")
+            return []
 
-if __name__ == "__main__":
+        # Extract headers
+        headers = [th.text.strip() for th in table.find('thead').find_all('th')]
+        logger.info(f"Found headers: {headers}")
+
+        # Extract rows
+        tbody = table.find('tbody')
+        if not tbody:
+            logger.warning("Table body not found")
+            return []
+
+        for tr in tbody.find_all('tr'):
+            cells = [td.text.strip() for td in tr.find_all('td')]
+            if len(cells) == len(headers):
+                row = dict(zip(headers, cells))
+                historical_data.append(row)
+            else:
+                logger.warning(f"Skipping row with mismatched columns: {cells}")
+
+        logger.info(f"Extracted {len(historical_data)} rows of historical data")
+        return historical_data
+    except Exception as e:
+        logger.error(f"Error extracting data: {e}")
+        return []
+
+def main():
+    """Main function to run the scraper."""
+    # Check robots.txt (manually or programmatically)
+    logger.info("Please ensure scraping complies with the website's terms of service and robots.txt")
+    
+    # Run the scraper
     data = extract_historical_prices()
     if data:
-        print(json.dumps(data, indent=2))
+        for row in data:
+            print(row)
     else:
-        print("No data extracted")
+        logger.error("No data extracted")
+
+if __name__ == "__main__":
+    main()

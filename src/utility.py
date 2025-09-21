@@ -29,7 +29,6 @@ def reverse_array(arr):
 def serialize_chart_data(chart_data):
     for item in chart_data["labels"]:
         item = str(item)
-    return chart_data
 
 def populate_database():
     load_dotenv()
@@ -65,6 +64,37 @@ def populate_database():
 
     db.disconnect()
 
+def populate_new_data_database():
+    load_dotenv()
+    db = DatabaseClient(
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        sslmode="allow"
+    )
+    db.connect()
+
+    historical_prices = extract_historical_prices()
+    closing_prices_eur = string_to_float(historical_prices)
+
+    dates = ([row['Datum'] for row in historical_prices])
+    new_dates = []
+    for date_str in dates:
+        day, month, year = map(int, date_str.split('.'))
+        date_object = datetime.date(int(year), int(month), int(day))
+        new_dates.append(date_object)
+
+    print(new_dates)
+
+    for date, price_eur in zip(new_dates, closing_prices_eur):
+        if not db.price_exists(date):
+            price_usd = convert_eur_to_usd(price_eur, date)
+            db.insert_price(price_usd, price_eur, date)
+
+    db.disconnect()
+
 def update_conversion_rates():
     load_dotenv()
     db = DatabaseClient(
@@ -79,7 +109,7 @@ def update_conversion_rates():
 
     prices = db.read_all_prices()
     for price_date, price, price_eur in prices:
-        usd = convert_eur_to_usd(price_eur, price_date)
+        usd = convert_eur_to_usd(float(price_eur), price_date)
         db.update_price(price_date=price_date, price=usd)
 
     db.disconnect()
