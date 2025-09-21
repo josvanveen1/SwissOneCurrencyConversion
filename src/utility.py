@@ -54,12 +54,33 @@ def populate_database():
         date_object = datetime.date(int(year), int(month), int(day))
         new_dates.append(date_object)
 
+    closing_price_usd = []
+    for i in len(closing_prices_eur):
+        closing_price_usd.append(convert_eur_to_usd(closing_prices_eur[i], new_dates[i]))
 
-    closing_price_usd = convert_eur_to_usd(closing_prices_eur)
     print(new_dates)
 
     for date, price, price_eur in zip(new_dates, closing_price_usd, closing_prices_eur):
         db.insert_price(price, price_eur, date)
+
+    db.disconnect()
+
+def update_conversion_rates():
+    load_dotenv()
+    db = DatabaseClient(
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        sslmode="allow"
+    )
+    db.connect()
+
+    prices = db.read_all_prices()
+    for price_date, price, price_eur in prices:
+        usd = convert_eur_to_usd(price_eur, price_date)
+        db.update_price(price_date=price_date, price=usd)
 
     db.disconnect()
 
@@ -69,62 +90,5 @@ def get_dates_from(date):
     dates = [date + datetime.timedelta(days=i) for i in range(delta.days + 1)]
     return dates
 
-def create_finance_schema_and_table():
-    load_dotenv()
-    db = DatabaseClient(
-        host=os.getenv("DB_HOST"),
-        port=int(os.getenv("DB_PORT")),
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-    )
-    db.connect()
-    try:
-        db.cursor.execute("""
-            CREATE SCHEMA IF NOT EXISTS finance;
-            CREATE TABLE IF NOT EXISTS finance.daily_prices (
-                price_date DATE PRIMARY KEY,
-                price FLOAT
-            );
-        """)
-        db.connection.commit()
-        print("Schema and table created or already exist.")
-    except Exception as e:
-        print(f"Error creating schema/table: {e}")
-    finally:
-        db.disconnect()
-
-def update_values_on_currency_change():
-    load_dotenv()
-    db = DatabaseClient(
-        host=os.getenv("DB_HOST"),
-        port=int(os.getenv("DB_PORT")),
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-    )
-    db.connect()
-    try:
-        db.cursor.execute("SELECT price_date, price_eur FROM finance.daily_prices;")
-        rows = db.cursor.fetchall()
-
-        date = [row[0] for row in rows]
-        price_eur = [row[1] for row in rows]
-        price_usd = convert_eur_to_usd(price_eur)
-        for d, p in zip(date, price_usd):
-            try:
-                db.cursor.execute("""
-                        UPDATE finance.daily_prices
-                        SET price = %s
-                        WHERE price_date = %s;
-                    """, (p, d))
-            except Exception as e:
-                print(f"Error updating price for {d}: {e}")
-
-    except Exception as e:
-        print(f"Error updating prices: {e}")
-    finally:
-        db.disconnect()
-
 if __name__ == "__main__":
-    update_values_on_currency_change()
+    update_conversion_rates()

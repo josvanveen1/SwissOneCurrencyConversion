@@ -85,6 +85,47 @@ class DatabaseClient:
             print(f"Error reading price range: {e}")
             return []
 
+    def read_all_prices(self):
+        """Retrieve all price entries from the database."""
+        try:
+            query = """
+                SELECT price_date, price, price_eur
+                FROM finance.daily_prices
+                ORDER BY price_date;
+            """
+            self.cursor.execute(query)
+            return self.cursor.fetchall()
+        except Error as e:
+            print(f"Error reading all prices: {e}")
+            return []
+    
+    def update_price(self, price_date: date, price: float = None, price_eur: float = None):
+        """Update price and/or price_eur for a given date."""
+        try:
+            fields = []
+            values = []
+            if price is not None:
+                fields.append("price = %s")
+                values.append(price)
+            if price_eur is not None:
+                fields.append("price_eur = %s")
+                values.append(price_eur)
+            if not fields:
+                print("No fields to update.")
+                return
+            query = f"""
+                UPDATE finance.daily_prices
+                SET {', '.join(fields)}
+                WHERE price_date = %s;
+            """
+            values.append(price_date)
+            self.cursor.execute(query, tuple(values))
+            self.connection.commit()
+            print(f"Updated price entry for date {price_date}.")
+        except Error as e:
+            print(f"Error updating price: {e}")
+            self.connection.rollback()
+
 
     def __enter__(self):
         """Support for context manager entry."""
