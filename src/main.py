@@ -4,7 +4,7 @@ from database_client import DatabaseClient
 import json
 import os
 from dotenv import load_dotenv
-from utility import get_dates_from, populate_database, update_values_on_currency_change 
+from utility import get_dates_from, populate_new_data_database
 from datetime import date
 from datetime import timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -284,5 +284,4 @@ async def root():
 
 @scheduler.scheduled_job('cron', hour='11', minute='19')
 async def fetch_data_job():
-    await update_values_on_currency_change()
-    await populate_database()
+  await populate_new_data_database()
