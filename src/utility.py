@@ -121,4 +121,18 @@ def get_dates_from(date):
     return dates
 
 if __name__ == "__main__":
-    update_conversion_rates()
+    import argparse
+    parser = argparse.ArgumentParser(description="Utility functions for SwissOneCurrencyConversion")
+    parser.add_argument("--function", type=str, required=True, choices=[
+        "update_conversion_rates",
+        "populate_database",
+        "populate_new_data_database"
+    ], help="Function to execute")
+    args = parser.parse_args()
+
+    if args.function == "update_conversion_rates":
+        update_conversion_rates()
+    elif args.function == "populate_database":
+        populate_database()
+    elif args.function == "populate_new_data_database":
+        populate_new_data_database()
