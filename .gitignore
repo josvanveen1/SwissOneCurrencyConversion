@@ -2,3 +2,4 @@ src/.env
 venv/
 src/__pycache__
 .DS_Store
+EuropeanCentralBank_Euro_FX - eurofxref-hist.csv

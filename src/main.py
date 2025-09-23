@@ -38,7 +38,7 @@ async def root():
     DB.connect()
 
     # Get historical data
-    data = DB.read_price_range(date(2024, 10, 24), date.today())
+    data = DB.read_price_range(date(2025, 1, 1), date.today())
     dates = [str(v[0]) for v in data]
     price_usd = [float(v[1]) for v in data]
     price_eur = [float(v[2]) for v in data]
@@ -98,10 +98,10 @@ async def root():
 
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
         <div class="mb-4 text-center sm:text-left">
-            <input type="date" id="startDate" min="2024-10-24" class="p-2 rounded-lg bg-gray-800 text-white border border-gray-700 mr-2" />
+            <input type="date" id="startDate" min="2025-01-01" class="p-2 rounded-lg bg-gray-800 text-white border border-gray-700 mr-2" />
             <input type="date" id="endDate" class="p-2 rounded-lg bg-gray-800 text-white border border-gray-700 mr-2" />
             <button id="filterButton" class="bg-red-500 hover:bg-red-600 text-white py-1 px-4 rounded-lg transition duration-200">
-            Filter
+            Apply
             </button>
         </div>
 

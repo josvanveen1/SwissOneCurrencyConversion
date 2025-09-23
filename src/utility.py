@@ -114,11 +114,96 @@ def update_conversion_rates():
 
     db.disconnect()
 
-def get_dates_from(date):
+# New function to populate EURtoUSD_fx_rate column
+def populate_fx_rate_column():
+    load_dotenv()
+    db = DatabaseClient(
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        sslmode="allow"
+    )
+    db.connect()
+
+    import csv
+
+    # Load FX rates from ECB CSV file into a dictionary
+    fx_rates = {}
+    csv_path = os.path.join(os.path.dirname(__file__), '../EuropeanCentralBank_Euro_FX - eurofxref-hist.csv')
+    with open(csv_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            date_str = row['Date']
+            usd_rate = row['USD']
+            if usd_rate and usd_rate != 'N/A':
+                fx_rates[date_str] = float(usd_rate)
+
+    prices = db.read_all_prices()
+    for price_date, price, price_eur in prices:
+        # Convert price_date to string in YYYY-MM-DD format
+        date_str = price_date.strftime('%Y-%m-%d')
+        fx_rate = fx_rates.get(date_str)
+        if fx_rate is not None:
+            try:
+                query = """
+                    UPDATE finance.daily_prices
+                    SET EURtoUSD_fx_rate = %s
+                    WHERE price_date = %s;
+                """
+                db.cursor.execute(query, (fx_rate, price_date))
+                db.connection.commit()
+                print(f"Updated EURtoUSD_fx_rate for {price_date}: {fx_rate}")
+            except Exception as e:
+                print(f"Error updating EURtoUSD_fx_rate for {price_date}: {e}")
+        else:
+            print(f"No FX rate found for {price_date}")
+    db.disconnect()
+
+def get_dates_from(start_date):
     today = datetime.date.today()
-    delta = today - date
-    dates = [date + datetime.timedelta(days=i) for i in range(delta.days + 1)]
+    delta = today - start_date
+    dates = [start_date + datetime.timedelta(days=i) for i in range(delta.days + 1)]
     return dates
+
+def update_price_with_fx_rate():
+    load_dotenv()
+    db = DatabaseClient(
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        sslmode="allow"
+    )
+    db.connect()
+
+    # Read all prices and FX rates
+    query = """
+        SELECT price_date, price_eur, EURtoUSD_fx_rate
+        FROM finance.daily_prices;
+    """
+    db.cursor.execute(query)
+    rows = db.cursor.fetchall()
+
+    for price_date, price_eur, fx_rate in rows:
+        if price_eur is not None and fx_rate is not None:
+            new_price = float(price_eur) * float(fx_rate)
+            try:
+                update_query = """
+                    UPDATE finance.daily_prices
+                    SET price = %s
+                    WHERE price_date = %s;
+                """
+                db.cursor.execute(update_query, (new_price, price_date))
+                db.connection.commit()
+                print(f"Updated price for {price_date}: {new_price}")
+            except Exception as e:
+                print(f"Error updating price for {price_date}: {e}")
+        else:
+            print(f"Missing price_eur or EURtoUSD_fx_rate for {price_date}")
+    db.disconnect()
 
 if __name__ == "__main__":
     import argparse
@@ -126,7 +211,9 @@ if __name__ == "__main__":
     parser.add_argument("--function", type=str, required=True, choices=[
         "update_conversion_rates",
         "populate_database",
-        "populate_new_data_database"
+        "populate_new_data_database",
+        "populate_fx_rate_column",
+        "update_price_with_fx_rate"
     ], help="Function to execute")
     args = parser.parse_args()
 
@@ -136,3 +223,7 @@ if __name__ == "__main__":
         populate_database()
     elif args.function == "populate_new_data_database":
         populate_new_data_database()
+    elif args.function == "populate_fx_rate_column":
+        populate_fx_rate_column()
+    elif args.function == "update_price_with_fx_rate":
+        update_price_with_fx_rate()
