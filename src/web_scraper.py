@@ -14,12 +14,6 @@ from retrying import retry
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Optional: Proxy list (you can use a proxy service like BrightData, Oxylabs, or free proxies)
-PROXIES = [
-    # Example: 'http://proxy1:port',
-    # Add proxies here or use a proxy service API
-]
-
 def get_random_proxy():
     return random.choice(PROXIES) if PROXIES else None
 
