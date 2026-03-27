@@ -10,6 +10,7 @@ from datetime import timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import utc
 from contextlib import asynccontextmanager
+import asyncio
 
 scheduler = AsyncIOScheduler(timezone=utc)
 
@@ -284,4 +285,6 @@ async def root():
 
 @scheduler.scheduled_job('cron', hour='11', minute='19')
 async def fetch_data_job():
-  await populate_new_data_database()
+  # `populate_new_data_database` is synchronous and can take time (Selenium/network).
+  # Run it in a worker thread so we don't block FastAPI's event loop.
+  await asyncio.to_thread(populate_new_data_database)

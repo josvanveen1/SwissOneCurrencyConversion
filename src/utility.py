@@ -7,6 +7,113 @@ import datetime
 import os
 from dotenv import load_dotenv
 
+
+def _parse_yyyy_mm_dd(value: str):
+    if value is None:
+        return None
+    try:
+        return datetime.datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as e:
+        raise ValueError(f"Invalid date '{value}', expected YYYY-MM-DD") from e
+
+
+def backfill_missing_conversions(start_date: datetime.date = None, end_date: datetime.date = None):
+    """Populate missing conversion fields for existing rows.
+
+    Fills:
+    - `price` (USD) when NULL and `price_eur` is present
+    - `EURtoUSD_fx_rate` when the column exists and is NULL
+
+    Safe to re-run (only updates NULL fields).
+    """
+    load_dotenv()
+    db = DatabaseClient(
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        sslmode=os.getenv("DB_SSLMODE", "allow"),
+    )
+    db.connect()
+
+    # Detect whether the FX column exists (so this works across migrations).
+    db.cursor.execute(
+        """
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'finance'
+          AND table_name = 'daily_prices'
+          AND column_name = 'eurtousd_fx_rate'
+        LIMIT 1;
+        """
+    )
+    has_fx_col = db.cursor.fetchone() is not None
+
+    where_clauses = ["price_eur IS NOT NULL", "(price IS NULL" + (" OR EURtoUSD_fx_rate IS NULL" if has_fx_col else "") + ")"]
+    params = []
+    if start_date is not None:
+        where_clauses.append("price_date >= %s")
+        params.append(start_date)
+    if end_date is not None:
+        where_clauses.append("price_date <= %s")
+        params.append(end_date)
+
+    select_cols = "price_date, price, price_eur" + (", EURtoUSD_fx_rate" if has_fx_col else "")
+    query = f"""
+        SELECT {select_cols}
+        FROM finance.daily_prices
+        WHERE {' AND '.join(where_clauses)}
+        ORDER BY price_date;
+    """
+    db.cursor.execute(query, tuple(params))
+    rows = db.cursor.fetchall()
+
+    updated_rows = 0
+    for row in rows:
+        if has_fx_col:
+            price_date, price_usd, price_eur, fx_rate = row
+        else:
+            price_date, price_usd, price_eur = row
+            fx_rate = None
+
+        # Fill USD price if missing.
+        if price_usd is None and price_eur is not None:
+            usd = convert_eur_to_usd(float(price_eur), price_date)
+            if usd is not None:
+                db.update_price(price_date=price_date, price=float(usd))
+                updated_rows += 1
+
+        # Optionally fill FX rate if the column exists and is missing.
+        if has_fx_col and fx_rate is None and price_eur is not None:
+            # Derive FX from USD conversion if we just computed it, otherwise recompute.
+            usd_value = None
+            if price_usd is not None:
+                usd_value = float(price_usd)
+            else:
+                usd_value = convert_eur_to_usd(float(price_eur), price_date)
+
+            if usd_value is not None and float(price_eur) != 0:
+                derived_fx = float(usd_value) / float(price_eur)
+                try:
+                    db.cursor.execute(
+                        """
+                        UPDATE finance.daily_prices
+                        SET EURtoUSD_fx_rate = %s
+                        WHERE price_date = %s
+                          AND EURtoUSD_fx_rate IS NULL;
+                        """,
+                        (derived_fx, price_date),
+                    )
+                    db.connection.commit()
+                    updated_rows += 1
+                except Exception as e:
+                    print(f"Error updating EURtoUSD_fx_rate for {price_date}: {e}")
+                    db.connection.rollback()
+
+    print(f"Backfill complete. Updated {updated_rows} fields across {len(rows)} rows.")
+    db.disconnect()
+
 def string_to_float(historical_prices):
     closing_prices_eur = []
     for row in historical_prices:
@@ -213,8 +320,11 @@ if __name__ == "__main__":
         "populate_database",
         "populate_new_data_database",
         "populate_fx_rate_column",
-        "update_price_with_fx_rate"
+        "update_price_with_fx_rate",
+        "backfill_missing_conversions",
     ], help="Function to execute")
+    parser.add_argument("--start-date", type=str, default=None, help="Optional start date (YYYY-MM-DD)")
+    parser.add_argument("--end-date", type=str, default=None, help="Optional end date (YYYY-MM-DD)")
     args = parser.parse_args()
 
     if args.function == "update_conversion_rates":
@@ -227,3 +337,7 @@ if __name__ == "__main__":
         populate_fx_rate_column()
     elif args.function == "update_price_with_fx_rate":
         update_price_with_fx_rate()
+    elif args.function == "backfill_missing_conversions":
+        start_date = _parse_yyyy_mm_dd(args.start_date)
+        end_date = _parse_yyyy_mm_dd(args.end_date)
+        backfill_missing_conversions(start_date=start_date, end_date=end_date)

@@ -94,7 +94,7 @@ def convert_eur_to_usd(amount_eur: float, date: date) -> float:
         return amount_eur * rate
     
     # If the date is today, try Currencylayer live rate as a last resort
-    if date.date() == datetime.today().date():
+    if date == datetime.today().date():
         logger.warning("Falling back to Currencylayer live rate")
         rate = get_currencylayer_live_rate()
         if rate is not None:
